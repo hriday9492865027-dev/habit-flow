@@ -1,0 +1,121 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper: Is user authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Is user the owner of the document
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Helper: Canonical pair ID for two UIDs
+    function pairId(uidA, uidB) {
+      return uidA < uidB ? uidA + '_' + uidB : uidB + '_' + uidA;
+    }
+
+    // Helper: Check if two users are accepted friends
+    function isAcceptedFriend(uidA, uidB) {
+      return exists(/databases/$(database)/documents/friendships/$(pairId(uidA, uidB)));
+    }
+
+    // 1. User Profiles (/users/{uid})
+    match /users/{uid} {
+      // Authenticated users can read public profile basics
+      allow read: if isAuthenticated();
+
+      // Only owner can create or update profile
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.sharingEnabled == false;
+
+      allow update: if isOwner(uid)
+        && request.resource.data.uid == uid;
+
+      allow delete: if isOwner(uid);
+
+      // 2. Private Live Location Subcollection (/users/{uid}/location/current)
+      match /location/current {
+        // Owner can read their own location.
+        // Friends can read ONLY IF:
+        //  a) Target user's sharingEnabled is true
+        //  b) Viewer is an accepted friend in the friendships collection
+        allow read: if isOwner(uid) || (
+          isAuthenticated()
+          && get(/databases/$(database)/documents/users/$(uid)).data.sharingEnabled == true
+          && isAcceptedFriend(request.auth.uid, uid)
+        );
+
+        // Only owner can write/update their location coordinates
+        allow create, update: if isOwner(uid)
+          && request.resource.data.latitude is number
+          && request.resource.data.latitude >= -90.0
+          && request.resource.data.latitude <= 90.0
+          && request.resource.data.longitude is number
+          && request.resource.data.longitude >= -180.0
+          && request.resource.data.longitude <= 180.0
+          && request.resource.data.accuracyMeters is number;
+
+        // Only owner can delete (stop sharing cleanup)
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // 3. Friend Requests (/friendRequests/{requestId})
+    match /friendRequests/{requestId} {
+      // Only parties involved can read the request
+      allow read: if isAuthenticated() && (
+        resource.data.fromUid == request.auth.uid ||
+        resource.data.toUid == request.auth.uid
+      );
+
+      // Authenticated sender can create request (cannot friend self)
+      allow create: if isAuthenticated()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Update rules:
+      // Recipient can accept or reject
+      // Sender can cancel
+      allow update: if isAuthenticated() && (
+        (resource.data.toUid == request.auth.uid && request.resource.data.status in ['accepted', 'rejected']) ||
+        (resource.data.fromUid == request.auth.uid && request.resource.data.status == 'cancelled')
+      );
+
+      allow delete: if false; // Audit trail preserved or deleted by trusted service
+    }
+
+    // 4. Canonical Friendships (/friendships/{canonicalPairId})
+    match /friendships/{canonicalPairId} {
+      // Only the two friends can read their friendship document
+      allow read: if isAuthenticated() && (
+        resource.data.userA == request.auth.uid ||
+        resource.data.userB == request.auth.uid
+      );
+
+      // Allow creating friendship upon acceptance when user is one of the parties
+      allow create: if isAuthenticated() && (
+        (request.resource.data.userA == request.auth.uid || request.resource.data.userB == request.auth.uid)
+        && request.resource.data.status == 'accepted'
+        && canonicalPairId == pairId(request.resource.data.userA, request.resource.data.userB)
+      );
+
+      // Either friend can remove/revoke the friendship
+      allow delete: if isAuthenticated() && (
+        resource.data.userA == request.auth.uid ||
+        resource.data.userB == request.auth.uid
+      );
+
+      allow update: if false;
+    }
+  }
+}

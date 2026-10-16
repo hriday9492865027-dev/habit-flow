@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FriendFlow</string>
+    <string name="title_activity_main">FriendFlow</string>
+    <string name="package_name">com.friendflow.app</string>
+    <string name="custom_url_scheme">com.friendflow.app</string>
+</resources>

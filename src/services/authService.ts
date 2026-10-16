@@ -83,12 +83,29 @@ export const authService = {
     } else {
       // Local fallback mode
       const mockUsers = getMockUsers();
+
+      // Check if email already registered in mock DB
+      const existingEmail = Object.values(mockUsers).find(
+        (u) => u.email.toLowerCase() === cleanEmail
+      );
+      if (existingEmail) {
+        if (existingEmail.pass === password) {
+          // Email & password match: sign in directly
+          localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(existingEmail.profile));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('storage'));
+          }
+          return existingEmail.profile;
+        }
+        throw new Error(`An account with email "${cleanEmail}" already exists. Please sign in instead.`);
+      }
+
       // Check if username is taken in mock DB
       const existing = Object.values(mockUsers).find(
         (u) => u.profile.usernameLower === usernameLower
       );
       if (existing) {
-        throw new Error(`Username "@${cleanUsername}" is already taken.`);
+        throw new Error(`Username "@${cleanUsername}" is already taken. Please choose a different username, or click Sign In if this is your account.`);
       }
 
       const uid = `mock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

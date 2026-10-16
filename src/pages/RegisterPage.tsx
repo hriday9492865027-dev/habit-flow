@@ -72,9 +72,20 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md px-4">
         <div className="bg-white py-8 px-6 sm:px-10 rounded-3xl shadow-floating border border-slate-200/80">
           {error && (
-            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-[#C43D4B] flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-[#C43D4B] flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+              {(error.includes('already taken') || error.includes('already exists') || error.includes('Sign In')) && (
+                <button
+                  type="button"
+                  onClick={onGoLogin}
+                  className="self-start text-[11px] font-bold text-[#167D70] hover:underline bg-white px-2.5 py-1 rounded-lg border border-red-200/60 shadow-xs"
+                >
+                  Go to Sign In &rarr;
+                </button>
+              )}
             </div>
           )}
 

@@ -1,0 +1,19 @@
+{
+  "short_name": "FriendFlow",
+  "name": "FriendFlow — Live Friend Location Sharing",
+  "description": "Consent-based live friend location sharing, interactive maps, and driving route distance tracker.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F7F8F5",
+  "theme_color": "#123B35",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/"
+}

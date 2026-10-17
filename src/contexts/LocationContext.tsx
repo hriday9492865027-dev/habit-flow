@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { UserLocation, LocationPermissionState } from '../types';
+import { UserLocation, LocationPermissionState, UserProfile } from '../types';
 import { useAuth } from './AuthContext';
+import { authService } from '../services/authService';
 import { locationService } from '../services/locationService';
 import { locationTrackingManager } from '../services/backgroundLocationService';
 
@@ -21,8 +22,22 @@ const LocationContext = createContext<LocationContextType | undefined>(undefined
 
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, updateProfile } = useAuth();
-  const [myLocation, setMyLocation] = useState<UserLocation | null>(null);
-  const [isSharing, setIsSharing] = useState<boolean>(false);
+  const [myLocation, setMyLocation] = useState<UserLocation | null>(() => {
+    try {
+      const u = authService.getCurrentStoredUser();
+      if (u?.uid) {
+        const cached = localStorage.getItem(`friendflow_cached_loc_${u.uid}`);
+        return cached ? JSON.parse(cached) : null;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+  const [isSharing, setIsSharing] = useState<boolean>(() => {
+    const u = authService.getCurrentStoredUser();
+    return u?.sharingEnabled ?? false;
+  });
   const [isTrackingActive, setIsTrackingActive] = useState<boolean>(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [permissionState, setPermissionState] = useState<LocationPermissionState>({
@@ -34,8 +49,8 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const isNativePlatform = locationTrackingManager.isNative();
   const activeUidRef = useRef<string | null>(null);
-  const isSharingRef = useRef(false);
-  const currentUserRef = useRef(currentUser);
+  const isSharingRef = useRef<boolean>(currentUser?.sharingEnabled ?? isSharing);
+  const currentUserRef = useRef<UserProfile | null>(currentUser);
 
   useEffect(() => {
     isSharingRef.current = isSharing;
@@ -56,6 +71,12 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setTrackingError(null);
 
       const uid = currentUserRef.current?.uid;
+      if (uid) {
+        try {
+          localStorage.setItem(`friendflow_cached_loc_${uid}`, JSON.stringify(loc));
+        } catch {}
+      }
+
       if (uid && isSharingRef.current) {
         try {
           await locationService.updateCurrentLocation(uid, loc);
@@ -76,8 +97,10 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (currentUser) {
       activeUidRef.current = currentUser.uid;
+      currentUserRef.current = currentUser;
       const enabled = currentUser.sharingEnabled ?? false;
       setIsSharing(enabled);
+      isSharingRef.current = enabled;
 
       // Auto-resume tracking if user previously opted in to sharing
       if (enabled) {
@@ -93,11 +116,29 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         locationTrackingManager.stopTracking();
       }
       activeUidRef.current = null;
+      currentUserRef.current = null;
       setMyLocation(null);
       setIsSharing(false);
+      isSharingRef.current = false;
       setIsTrackingActive(false);
     }
   }, [currentUser, handleLocationUpdate, handleLocationError]);
+
+  // Active re-sync when tab visibility is restored or focused
+  useEffect(() => {
+    const handleReactivate = () => {
+      if (document.visibilityState === 'visible' && isSharingRef.current) {
+        locationTrackingManager.startTracking(handleLocationUpdate, handleLocationError, false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleReactivate);
+    window.addEventListener('focus', handleReactivate);
+    return () => {
+      document.removeEventListener('visibilitychange', handleReactivate);
+      window.removeEventListener('focus', handleReactivate);
+    };
+  }, [handleLocationUpdate, handleLocationError]);
 
   const startSharing = useCallback(async (): Promise<boolean> => {
     if (!currentUser) return false;
@@ -151,6 +192,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMyLocation((prev) => (prev ? { ...prev, isSharing: false } : null));
 
     try {
+      localStorage.removeItem(`friendflow_cached_loc_${currentUser.uid}`);
       await locationService.setSharingEnabled(currentUser.uid, false);
       await updateProfile({ sharingEnabled: false });
     } catch (err) {

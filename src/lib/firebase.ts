@@ -2,6 +2,8 @@ import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   connectAuthEmulator,
+  setPersistence,
+  browserLocalPersistence,
   Auth,
 } from 'firebase/auth';
 import {
@@ -36,6 +38,10 @@ if (isFirebaseConfigured()) {
   try {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     auth = getAuth(app);
+    // Guarantee permanent session persistence across closed tabs, refreshes, and browser restarts
+    setPersistence(auth, browserLocalPersistence).catch((err) => {
+      console.warn('[Firebase] setPersistence error:', err);
+    });
     db = getFirestore(app);
 
     // Connect to local emulators if specified

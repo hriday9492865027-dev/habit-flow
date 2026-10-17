@@ -22,8 +22,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SECRET_STORAGE_KEY = 'friendflow_secret_controls_unlocked';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    return authService.getCurrentStoredUser();
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    return !authService.getCurrentStoredUser();
+  });
   const [isSecretUnlocked, setIsSecretUnlocked] = useState<boolean>(() => {
     try {
       return localStorage.getItem(SECRET_STORAGE_KEY) === 'true';

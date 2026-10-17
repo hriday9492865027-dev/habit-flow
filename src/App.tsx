@@ -98,7 +98,10 @@ function AppContent() {
         )}
 
         {currentTab === 'distance' && (
-          <DistancePage initialFriendUid={focusedFriendUid} />
+          <DistancePage
+            initialFriendUid={focusedFriendUid}
+            onGoFriends={() => setCurrentTab('friends')}
+          />
         )}
 
         {currentTab === 'settings' && <SettingsPage />}

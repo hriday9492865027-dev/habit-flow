@@ -71,14 +71,18 @@ function MapController({
 }
 
 // Custom DivIcon creator for current user
-function createUserMarkerIcon() {
+function createUserMarkerIcon(isSharing: boolean = true) {
+  const pulseColor = isSharing ? 'rgba(22, 125, 112, 0.25)' : 'rgba(100, 116, 139, 0.15)';
+  const centerColor = isSharing ? '#167D70' : '#475569';
+  const dotColor = isSharing ? '#DDF5E9' : '#F1F5F9';
+
   return L.divIcon({
     className: 'custom-user-marker',
     html: `
       <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px;">
-        <div style="position: absolute; width: 40px; height: 40px; border-radius: 50%; background: rgba(22, 125, 112, 0.25); animation: beaconPulse 2s infinite ease-in-out;"></div>
-        <div style="width: 22px; height: 22px; border-radius: 50%; background: #167D70; border: 3px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;">
-          <div style="width: 6px; height: 6px; border-radius: 50%; background: #DDF5E9;"></div>
+        <div style="position: absolute; width: 40px; height: 40px; border-radius: 50%; background: ${pulseColor}; ${isSharing ? 'animation: beaconPulse 2s infinite ease-in-out;' : ''}"></div>
+        <div style="width: 22px; height: 22px; border-radius: 50%; background: ${centerColor}; border: 3px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;">
+          <div style="width: 6px; height: 6px; border-radius: 50%; background: ${dotColor};"></div>
         </div>
       </div>
     `,
@@ -140,7 +144,10 @@ export const MapView: React.FC<MapViewProps> = ({
     return [20.5937, 78.9629]; // Neutral world/subcontinent overview
   }, [myLocation, friendLocations]);
 
-  const userMarkerIcon = useMemo(() => createUserMarkerIcon(), []);
+  const userMarkerIcon = useMemo(
+    () => createUserMarkerIcon(myLocation?.isSharing ?? false),
+    [myLocation?.isSharing]
+  );
 
   return (
     <div className={`relative w-full h-full rounded-2xl overflow-hidden shadow-card border border-slate-200/80 ${className}`}>
@@ -165,8 +172,21 @@ export const MapView: React.FC<MapViewProps> = ({
             <Popup>
               <div className="p-3 text-left min-w-[180px]">
                 <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-[#167D70]"></div>
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      myLocation.isSharing ? 'bg-[#167D70]' : 'bg-slate-400'
+                    }`}
+                  ></div>
                   <span className="font-bold text-[#123B35] text-sm">Your Location</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                      myLocation.isSharing
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {myLocation.isSharing ? 'Sharing Active' : 'Private'}
+                  </span>
                 </div>
                 <div className="text-xs text-slate-500 space-y-0.5">
                   <p>Accuracy: ~{Math.round(myLocation.accuracyMeters)}m</p>

@@ -11,6 +11,7 @@ interface LocationContextType {
   permissionState: LocationPermissionState;
   startSharing: () => Promise<boolean>;
   stopSharing: () => Promise<void>;
+  refreshLocation: () => Promise<boolean>;
   requestPermission: () => Promise<LocationPermissionState>;
   trackingError: string | null;
   isNativePlatform: boolean;
@@ -33,22 +34,15 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const isNativePlatform = locationTrackingManager.isNative();
   const activeUidRef = useRef<string | null>(null);
+  const isSharingRef = useRef(false);
+  const currentUserRef = useRef(currentUser);
 
-  // Sync with profile sharingEnabled status
   useEffect(() => {
-    if (currentUser) {
-      activeUidRef.current = currentUser.uid;
-      setIsSharing(currentUser.sharingEnabled ?? false);
-    } else {
-      // User signed out -> stop any active tracking immediately
-      if (activeUidRef.current) {
-        locationTrackingManager.stopTracking();
-      }
-      activeUidRef.current = null;
-      setMyLocation(null);
-      setIsSharing(false);
-      setIsTrackingActive(false);
-    }
+    isSharingRef.current = isSharing;
+  }, [isSharing]);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
   }, [currentUser]);
 
   // Check initial permissions
@@ -61,15 +55,16 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setMyLocation(loc);
       setTrackingError(null);
 
-      if (currentUser?.uid && isSharing) {
+      const uid = currentUserRef.current?.uid;
+      if (uid && isSharingRef.current) {
         try {
-          await locationService.updateCurrentLocation(currentUser.uid, loc);
+          await locationService.updateCurrentLocation(uid, loc);
         } catch (e: any) {
           console.warn('[LocationContext] Error updating remote location:', e);
         }
       }
     },
-    [currentUser?.uid, isSharing]
+    []
   );
 
   const handleLocationError = useCallback((errorMsg: string) => {
@@ -77,24 +72,54 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     console.warn('[LocationContext] Location error:', errorMsg);
   }, []);
 
+  // Sync with profile sharingEnabled status
+  useEffect(() => {
+    if (currentUser) {
+      activeUidRef.current = currentUser.uid;
+      const enabled = currentUser.sharingEnabled ?? false;
+      setIsSharing(enabled);
+
+      // Auto-resume tracking if user previously opted in to sharing
+      if (enabled) {
+        locationTrackingManager
+          .startTracking(handleLocationUpdate, handleLocationError)
+          .then((started) => {
+            if (started) setIsTrackingActive(true);
+          });
+      }
+    } else {
+      // User signed out -> stop any active tracking immediately
+      if (activeUidRef.current) {
+        locationTrackingManager.stopTracking();
+      }
+      activeUidRef.current = null;
+      setMyLocation(null);
+      setIsSharing(false);
+      setIsTrackingActive(false);
+    }
+  }, [currentUser, handleLocationUpdate, handleLocationError]);
+
   const startSharing = useCallback(async (): Promise<boolean> => {
     if (!currentUser) return false;
     setTrackingError(null);
+    setIsSharing(true);
+    isSharingRef.current = true;
+
+    try {
+      await locationService.setSharingEnabled(currentUser.uid, true);
+      await updateProfile({ sharingEnabled: true });
+    } catch (err: any) {
+      console.error('[LocationContext] Error setting sharing enabled:', err);
+    }
 
     const started = await locationTrackingManager.startTracking(
       handleLocationUpdate,
-      handleLocationError
+      handleLocationError,
+      true // force restart to acquire immediate fresh fix
     );
 
     if (started) {
       setIsTrackingActive(true);
-      setIsSharing(true);
-      try {
-        await locationService.setSharingEnabled(currentUser.uid, true);
-        await updateProfile({ sharingEnabled: true });
-      } catch (err: any) {
-        console.error('[LocationContext] Error setting sharing enabled:', err);
-      }
       return true;
     } else {
       setIsTrackingActive(false);
@@ -102,9 +127,24 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [currentUser, handleLocationUpdate, handleLocationError, updateProfile]);
 
+  const refreshLocation = useCallback(async (): Promise<boolean> => {
+    setTrackingError(null);
+    const started = await locationTrackingManager.startTracking(
+      handleLocationUpdate,
+      handleLocationError,
+      true
+    );
+    if (started) {
+      setIsTrackingActive(true);
+    }
+    locationTrackingManager.checkPermissions().then(setPermissionState);
+    return started;
+  }, [handleLocationUpdate, handleLocationError]);
+
   const stopSharing = useCallback(async (): Promise<void> => {
     if (!currentUser) return;
 
+    isSharingRef.current = false;
     await locationTrackingManager.stopTracking();
     setIsTrackingActive(false);
     setIsSharing(false);
@@ -133,6 +173,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         permissionState,
         startSharing,
         stopSharing,
+        refreshLocation,
         requestPermission,
         trackingError,
         isNativePlatform,

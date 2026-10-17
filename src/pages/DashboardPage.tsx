@@ -58,7 +58,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* Primary Map Container */}
       <div className="flex-1 relative h-full">
         <MapView
-          myLocation={isSharing ? myLocation : null}
+          myLocation={myLocation}
           friendLocations={friendLocations}
           selectedFriendUid={selectedFriendUid}
           onSelectFriend={(uid) => {

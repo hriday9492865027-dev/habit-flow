@@ -78,18 +78,36 @@ class LocationTrackingManager {
     };
   }
 
+  private extractUserLoc(pos: GeolocationPosition): UserLocation {
+    const { latitude, longitude, accuracy } = pos.coords;
+    this.lastLat = latitude;
+    this.lastLng = longitude;
+    return {
+      latitude,
+      longitude,
+      accuracyMeters: Math.round((accuracy || 10) * 10) / 10,
+      capturedAt: pos.timestamp || Date.now(),
+      receivedAt: Date.now(),
+      platform: 'web',
+      isSharing: true,
+    };
+  }
+
   /**
    * Starts location tracking.
    * On Native Android: Uses Capgo background geolocation with persistent notification.
-   * On Web: Uses standard HTML5 Geolocation watchPosition in foreground.
+   * On Web: Uses standard HTML5 Geolocation with automatic fallback from high accuracy to network positioning.
    */
   public async startTracking(
     onUpdate: LocationUpdateCallback,
-    onError: LocationErrorCallback
+    onError: LocationErrorCallback,
+    forceRestart: boolean = false
   ): Promise<boolean> {
-    if (this.isTracking) {
-      console.warn('[LocationTrackingManager] Tracking is already active.');
+    if (this.isTracking && !forceRestart) {
       return true;
+    }
+    if (this.isTracking && forceRestart) {
+      await this.stopTracking();
     }
 
     if (this.isNative() && BackgroundGeolocation) {
@@ -146,53 +164,75 @@ class LocationTrackingManager {
       }
 
       try {
-        const watchId = navigator.geolocation.watchPosition(
-          (pos) => {
-            const { latitude, longitude, accuracy } = pos.coords;
+        // 1. Immediate position acquisition with graceful fallback
+        const tryGetCurrent = (highAccuracy: boolean) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              onUpdate(this.extractUserLoc(pos));
+            },
+            (err) => {
+              if (highAccuracy) {
+                console.warn('[LocationTrackingManager] High-accuracy query failed, falling back to network positioning:', err.message);
+                tryGetCurrent(false);
+              } else {
+                let msg = 'Failed to obtain GPS coordinates.';
+                if (err.code === err.PERMISSION_DENIED) {
+                  msg = 'Location permission denied. Click the lock or tune icon beside the URL in your browser address bar and set Location to "Allow", then click Retry.';
+                } else if (err.code === err.POSITION_UNAVAILABLE) {
+                  msg = 'Device location unavailable. Ensure Location Services are turned ON in Windows Settings (Settings > Privacy & security > Location) and allowed for your browser.';
+                } else if (err.code === err.TIMEOUT) {
+                  msg = 'Location request timed out. Please check your network connection.';
+                }
+                onError(msg);
+              }
+            },
+            {
+              enableHighAccuracy: highAccuracy,
+              timeout: highAccuracy ? 5000 : 12000,
+              maximumAge: highAccuracy ? 5000 : 30000,
+            }
+          );
+        };
 
-            // Throttle GPS jitter if moved less than distance threshold
-            if (this.lastLat !== null && this.lastLng !== null) {
-              const deltaLat = Math.abs(latitude - this.lastLat);
-              const deltaLng = Math.abs(longitude - this.lastLng);
-              // ~0.0002 degrees is roughly 22 meters
-              if (deltaLat < 0.0002 && deltaLng < 0.0002) {
+        tryGetCurrent(true);
+
+        // 2. Start ongoing watcher with auto-fallback to low accuracy if high fails
+        let useHighAccuracy = true;
+        const startWatcher = (highAcc: boolean): number => {
+          return navigator.geolocation.watchPosition(
+            (pos) => {
+              onUpdate(this.extractUserLoc(pos));
+            },
+            (err) => {
+              if (useHighAccuracy && (err.code === err.POSITION_UNAVAILABLE || err.code === err.TIMEOUT)) {
+                console.warn('[LocationTrackingManager] Watcher high accuracy failed, switching to network positioning:', err.message);
+                useHighAccuracy = false;
+                if (typeof this.activeWatcherId === 'number') {
+                  navigator.geolocation.clearWatch(this.activeWatcherId);
+                }
+                this.activeWatcherId = startWatcher(false);
                 return;
               }
+
+              let msg = 'Failed to obtain GPS coordinates.';
+              if (err.code === err.PERMISSION_DENIED) {
+                msg = 'Location permission denied. Click the lock icon in your browser address bar to Allow location access.';
+              } else if (err.code === err.POSITION_UNAVAILABLE) {
+                msg = 'Device location unavailable. Ensure Location is turned ON in Windows Settings (Settings > Privacy & security > Location).';
+              } else if (err.code === err.TIMEOUT) {
+                msg = 'Location request timed out. Retrying...';
+              }
+              onError(msg);
+            },
+            {
+              enableHighAccuracy: highAcc,
+              maximumAge: highAcc ? 5000 : 15000,
+              timeout: highAcc ? 10000 : 20000,
             }
+          );
+        };
 
-            this.lastLat = latitude;
-            this.lastLng = longitude;
-
-            const userLoc: UserLocation = {
-              latitude,
-              longitude,
-              accuracyMeters: Math.round((accuracy || 10) * 10) / 10,
-              capturedAt: pos.timestamp || Date.now(),
-              receivedAt: Date.now(),
-              platform: 'web',
-              isSharing: true,
-            };
-
-            onUpdate(userLoc);
-          },
-          (err) => {
-            let msg = 'Failed to obtain GPS coordinates.';
-            if (err.code === err.PERMISSION_DENIED) {
-              msg = 'Location permission denied. Please allow location access to share your location.';
-            } else if (err.code === err.POSITION_UNAVAILABLE) {
-              msg = 'Location unavailable. Ensure GPS is enabled on your device.';
-            } else if (err.code === err.TIMEOUT) {
-              msg = 'Location request timed out. Retrying...';
-            }
-            onError(msg);
-          },
-          {
-            enableHighAccuracy: true,
-            maximumAge: 10000,
-            timeout: 20000,
-          }
-        );
-
+        const watchId = startWatcher(true);
         this.activeWatcherId = watchId;
         this.isTracking = true;
         return true;

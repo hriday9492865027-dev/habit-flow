@@ -12,13 +12,40 @@ interface AuthContextType {
   resetPassword: typeof authService.resetPassword;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   refreshProfile: () => Promise<void>;
+  isSecretUnlocked: boolean;
+  setSecretUnlocked: (unlocked: boolean) => void;
+  toggleSecretUnlocked: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const SECRET_STORAGE_KEY = 'friendflow_secret_controls_unlocked';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isSecretUnlocked, setIsSecretUnlocked] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SECRET_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const setSecretUnlocked = (val: boolean) => {
+    setIsSecretUnlocked(val);
+    try {
+      localStorage.setItem(SECRET_STORAGE_KEY, String(val));
+    } catch {
+      // ignore storage error
+    }
+  };
+
+  const toggleSecretUnlocked = (): boolean => {
+    const next = !isSecretUnlocked;
+    setSecretUnlocked(next);
+    return next;
+  };
 
   useEffect(() => {
     const unsub = authService.subscribeToAuth((profile) => {
@@ -32,6 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     await authService.logout();
     setCurrentUser(null);
+    setSecretUnlocked(false);
   };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
@@ -59,6 +87,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetPassword: authService.resetPassword,
         updateProfile,
         refreshProfile,
+        isSecretUnlocked,
+        setSecretUnlocked,
+        toggleSecretUnlocked,
       }}
     >
       {children}

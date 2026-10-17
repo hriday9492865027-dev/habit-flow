@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../lib/firebase';
 import { UserProfile } from '../types';
-import { normalizeUsername } from '../lib/validators';
+import { normalizeUsername, removeUndefinedFields } from '../lib/validators';
 
 export interface PublicUserResult {
   uid: string;
@@ -50,7 +50,7 @@ export const profileService = {
     }
 
     if (isFirebaseConfigured() && db) {
-      await updateDoc(doc(db, 'users', uid), safeUpdates);
+      await updateDoc(doc(db, 'users', uid), removeUndefinedFields(safeUpdates));
     } else {
       const raw = localStorage.getItem('friendflow_mock_users_db');
       if (raw) {

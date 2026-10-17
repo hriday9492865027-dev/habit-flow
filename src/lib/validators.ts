@@ -37,6 +37,19 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
+ * Strips undefined properties so Firestore setDoc/updateDoc doesn't reject payloads.
+ */
+export function removeUndefinedFields<T extends Record<string, any>>(obj: T): T {
+  const clean: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean as T;
+}
+
+/**
  * Validates and sanitizes location payload before writing to Firestore.
  */
 export function sanitizeLocationPayload(data: Partial<UserLocation>): {

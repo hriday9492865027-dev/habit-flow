@@ -9,7 +9,7 @@ import {
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../lib/firebase';
 import { UserProfile } from '../types';
-import { normalizeUsername, isValidUsername, isValidDisplayName, isValidEmail } from '../lib/validators';
+import { normalizeUsername, isValidUsername, isValidDisplayName, isValidEmail, removeUndefinedFields } from '../lib/validators';
 
 const LOCAL_STORAGE_USER_KEY = 'friendflow_mock_user';
 const LOCAL_STORAGE_USERS_DB_KEY = 'friendflow_mock_users_db';
@@ -78,7 +78,7 @@ export const authService = {
         updatedAt: Date.now(),
       };
 
-      await setDoc(doc(db, 'users', uid), profile);
+      await setDoc(doc(db, 'users', uid), removeUndefinedFields(profile));
       return profile;
     } else {
       // Local fallback mode
@@ -154,7 +154,7 @@ export const authService = {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      await setDoc(doc(db, 'users', credential.user.uid), newProfile);
+      await setDoc(doc(db, 'users', credential.user.uid), removeUndefinedFields(newProfile));
       return newProfile;
     } else {
       const mockUsers = getMockUsers();

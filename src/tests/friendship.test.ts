@@ -1,9 +1,15 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { getCanonicalPairId, friendshipService } from '../services/friendshipService';
 import { profileService } from '../services/profileService';
 import { locationService } from '../services/locationService';
 import { sanitizeLocationPayload, isValidUsername } from '../lib/validators';
 import { UserProfile } from '../types';
+
+vi.mock('../lib/firebase', () => ({
+  isFirebaseConfigured: () => false,
+  db: null,
+  auth: null,
+}));
 
 // In-memory mock for Node test environment
 if (typeof localStorage === 'undefined') {

@@ -13,6 +13,7 @@ import {
 import { db, isFirebaseConfigured } from '../lib/firebase';
 import { FriendRequest, Friendship, FriendContact, UserProfile } from '../types';
 import { PublicUserResult } from './profileService';
+import { removeUndefinedFields } from '../lib/validators';
 
 export function getCanonicalPairId(uidA: string, uidB: string): string {
   return uidA < uidB ? `${uidA}_${uidB}` : `${uidB}_${uidA}`;
@@ -95,17 +96,17 @@ export const friendshipService = {
         fromUid: currentUser.uid,
         fromDisplayName: currentUser.displayName,
         fromUsername: currentUser.username,
-        fromAvatarUrl: currentUser.avatarUrl,
+        fromAvatarUrl: currentUser.avatarUrl || '',
         toUid: target.uid,
         toDisplayName: target.displayName,
         toUsername: target.username,
-        toAvatarUrl: target.avatarUrl,
+        toAvatarUrl: target.avatarUrl || '',
         status: 'pending',
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
 
-      await setDoc(newReqRef, newRequest);
+      await setDoc(newReqRef, removeUndefinedFields(newRequest));
       return newRequest;
     } else {
       // Mock mode
@@ -175,7 +176,7 @@ export const friendshipService = {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      await setDoc(doc(db, 'friendships', pairId), friendship);
+      await setDoc(doc(db, 'friendships', pairId), removeUndefinedFields(friendship));
     } else {
       const mockReqs = getMockRequests();
       const idx = mockReqs.findIndex((r) => r.id === request.id);
